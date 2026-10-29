@@ -1,0 +1,25 @@
+{
+  "name": "fin-logic",
+  "version": "1.0.0",
+  "description": "AI-powered financial document analyzer that flags predatory clauses, hidden fees and dark patterns.",
+  "main": "backend/server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node backend/server.js"
+  },
+  "author": "Shivam Singh",
+  "license": "MIT",
+  "dependencies": {
+    "body-parser": "^2.2.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "firebase-admin": "^13.6.0",
+    "form-data": "^4.0.5",
+    "groq-sdk": "^0.37.0",
+    "multer": "^2.0.2",
+    "pdf-parse": "^1.1.1",
+    "tesseract.js": "^7.0.0"
+  },
+  "private": true
+}
