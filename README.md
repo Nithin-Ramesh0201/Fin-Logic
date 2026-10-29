@@ -106,7 +106,7 @@ MIT License - see [LICENSE](LICENSE).
 
 ## 📧 Contact
 
-**Shivam Singh**
+**Nithin Ramesh**
 
 ---
 
