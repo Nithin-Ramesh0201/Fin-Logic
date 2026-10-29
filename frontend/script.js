@@ -1,52 +1,88 @@
-const dropzone = document.getElementById('dropzone');
-const fileInput = document.getElementById('fileInput');
-const analyzeBtn = document.getElementById('analyzeBtn');
-const resultsSection = document.getElementById('results');
-const analysisContainer = document.getElementById('analysis-container');
-const analysisContent = document.getElementById('analysis-content');
-const loader = document.getElementById('loader');
-const fileInfo = document.getElementById('file-info');
-const textInput = document.getElementById('textInput');
+// ---------- Helpers ----------
+const $ = (id) => document.getElementById(id);
+
+// Escape anything coming from the user or the AI before putting it into innerHTML
+const esc = (s) =>
+    String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+let toastTimer;
+function showToast(message, type = 'info') {
+    const toast = $('toast');
+    toast.textContent = message;
+    toast.className = `toast show ${type}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 4000);
+}
+const showError = (message) => showToast(message, 'error');
+
+// ---------- Elements & state ----------
+const dropzone = $('dropzone');
+const fileInput = $('fileInput');
+const analyzeBtn = $('analyzeBtn');
+const resultsSection = $('results');
+const analysisContainer = $('analysis-container');
+const analysisContent = $('analysis-content');
+const loader = $('loader');
+const fileInfo = $('file-info');
+const textInput = $('textInput');
 const tabs = document.querySelectorAll('.tab-btn');
 const tabContents = document.querySelectorAll('.tab-content');
 
 let selectedFile = null;
 let activeMode = 'upload'; // 'upload' or 'paste'
+let signInTipShown = false;
 
-// Tabs Logic
-tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-        tabs.forEach(t => t.classList.remove('active'));
-        tabContents.forEach(c => c.classList.remove('active'));
-        
-        tab.classList.add('active');
-        const targetId = `tab-${tab.dataset.tab}`;
-        document.getElementById(targetId).classList.add('active');
-        activeMode = tab.dataset.tab;
+// ---------- Tabs ----------
+function setTab(name) {
+    activeMode = name;
+    tabs.forEach((t) => {
+        const on = t.dataset.tab === name;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', on);
+        t.tabIndex = on ? 0 : -1;
+    });
+    tabContents.forEach((c) => c.classList.toggle('active', c.id === `tab-${name}`));
+}
+
+tabs.forEach((tab) => {
+    tab.addEventListener('click', () => setTab(tab.dataset.tab));
+    tab.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+        const next = tab.dataset.tab === 'upload' ? 'paste' : 'upload';
+        setTab(next);
+        $(`tabbtn-${next}`).focus();
     });
 });
 
-// File Handling
+// ---------- File handling ----------
 dropzone.addEventListener('click', () => fileInput.click());
-dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.style.borderColor = '#0f172a'; });
-dropzone.addEventListener('dragleave', () => { dropzone.style.borderColor = '#e2e8f0'; });
+dropzone.addEventListener('keydown', (e) => {
+    if (e.target === dropzone && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        fileInput.click();
+    }
+});
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
 dropzone.addEventListener('drop', (e) => {
     e.preventDefault();
-    dropzone.style.borderColor = '#e2e8f0';
+    dropzone.classList.remove('dragover');
     if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
 });
 fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
 
 function handleFile(file) {
+    if (!(file.type === 'application/pdf' || file.type.startsWith('image/'))) {
+        showError('Please choose a PDF or an image file.');
+        return;
+    }
     selectedFile = file;
     fileInfo.textContent = `Selected: ${file.name}`;
     fileInfo.classList.remove('hidden');
 }
 
-// Analyze
-// Analyze
+// ---------- Analyze ----------
 analyzeBtn.addEventListener('click', async () => {
-    // Validation
     if (activeMode === 'upload' && !selectedFile) {
         showError('Please select a file to analyze.');
         return;
@@ -56,16 +92,15 @@ analyzeBtn.addEventListener('click', async () => {
         return;
     }
 
-    // UI Reset
     resultsSection.classList.remove('hidden');
     loader.classList.remove('hidden');
     analysisContainer.classList.add('hidden');
     analyzeBtn.disabled = true;
     analyzeBtn.textContent = 'Analyzing...';
-    
+    resultsSection.setAttribute('aria-busy', 'true');
+
     try {
         let response;
-
         if (activeMode === 'upload') {
             const formData = new FormData();
             formData.append('document', selectedFile);
@@ -79,24 +114,16 @@ analyzeBtn.addEventListener('click', async () => {
         }
 
         const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `Server error: ${response.status}`);
+        if (!data.success) throw new Error(data.error || 'Analysis failed');
 
-        if (!response.ok) {
-            throw new Error(data.error || `Server error: ${response.status}`);
-        }
+        renderResults(data.results, data.source);
+        loader.classList.add('hidden');
+        analysisContainer.classList.remove('hidden');
+        resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-        if (data.success) {
-            renderResults(data.results, data.source);
-            loader.classList.add('hidden');
-            analysisContainer.classList.remove('hidden');
-            
-            // Save report to Firebase (simplified for now)
-            // Save report to Firebase
-            const inputText = activeMode === 'upload' ? "PDF Upload" : textInput.value;
-            await saveCurrentReport(data.results, inputText, activeMode, null);
-        } else {
-            throw new Error(data.error || 'Analysis failed');
-        }
-
+        const inputText = activeMode === 'upload' ? 'PDF Upload' : textInput.value;
+        await saveCurrentReport(data.results, inputText, activeMode, null);
     } catch (error) {
         console.error('Analysis error:', error);
         loader.classList.add('hidden');
@@ -104,15 +131,15 @@ analyzeBtn.addEventListener('click', async () => {
     } finally {
         analyzeBtn.disabled = false;
         analyzeBtn.textContent = 'Analyze Risk Level';
+        resultsSection.removeAttribute('aria-busy');
     }
 });
 
 function parseAnalysisText(text) {
     const result = {};
-    const lines = text.split('\n');
     let currentKey = null;
 
-    lines.forEach(line => {
+    text.split('\n').forEach((line) => {
         if (line.includes(':')) {
             const [key, ...val] = line.split(':');
             currentKey = key.trim().toLowerCase();
@@ -128,22 +155,22 @@ function renderResults(risks, source) {
     resultsSection.classList.remove('hidden');
     analysisContainer.classList.remove('hidden');
     analysisContent.innerHTML = '';
-    
+
     if (!risks || risks.length === 0) {
-        analysisContent.innerHTML = '<div class="card safe"><h3>✅ No apparent risks found</h3><p>The automated scan did not detect common risky patterns.</p></div>';
+        analysisContent.innerHTML =
+            '<div class="card safe"><div class="card-header"><h3>✅ No apparent risks found</h3></div>' +
+            '<div class="card-body"><p>The automated scan did not detect common risky patterns.</p></div></div>';
         return;
     }
 
     risks.forEach((risk, index) => {
         const card = document.createElement('div');
-        
-        // Parse the text analysis if available
+
         let parsed = {};
-        if (risk.analysis && !risk.analysis.includes("AI Analysis Failed")) {
+        if (risk.analysis && !risk.analysis.includes('AI Analysis Failed')) {
             parsed = parseAnalysisText(risk.analysis);
         }
 
-        // Determine CSS class
         let cssClass = 'med-risk';
         if (risk.analysis && risk.analysis.toLowerCase().includes('high risk')) cssClass = 'high-risk';
         if (risk.riskType === 'High') cssClass = 'high-risk';
@@ -151,64 +178,59 @@ function renderResults(risks, source) {
         card.className = `card ${cssClass}`;
         card.style.animationDelay = `${index * 0.1}s`;
 
-        // Validation status logic
-        const confidence = risk.validation ? risk.validation : "Not confident — please verify manually.";
-        const isConfidenceWarning = !confidence.includes("Correct");
+        const confidence = risk.validation ? risk.validation : 'Not confident — please verify manually.';
+        const isConfidenceWarning = !confidence.includes('Correct');
+        const rewrite = parsed['safer rewrite suggestion'];
 
         card.innerHTML = `
             <div class="card-header">
-                <h3>${parsed['risk highlight'] || risk.riskType || 'Risk Detected'}</h3>
+                <h3>${esc(parsed['risk highlight'] || risk.riskType || 'Risk Detected')}</h3>
                 ${source === 'regex-only' ? '<span class="status-badge warning">Regex Only</span>' : ''}
             </div>
             <div class="card-body">
-                <div class="clause-box">"${risk.clause}"</div>
-                
+                <div class="clause-box">"${esc(risk.clause)}"</div>
+
                 ${parsed['why it is risky'] ? `
                 <div class="friendly-section">
                     <div class="friendly-item">
                         <h4>Why it is risky</h4>
-                        <p>${parsed['why it is risky']}</p>
+                        <p>${esc(parsed['why it is risky'])}</p>
                     </div>
-                     <div class="friendly-item highlight-box">
+                    <div class="friendly-item highlight-box">
                         <h4>Estimated Loss</h4>
-                        <p class="loss-highlight">${risk.estimatedLoss || parsed['estimated possible loss'] || 'Unknown'}</p>
+                        <p class="loss-highlight">${esc(risk.estimatedLoss || parsed['estimated possible loss'] || 'Unknown')}</p>
                     </div>
                 </div>
-                ` : `<p>${risk.analysis}</p>`}
+                ` : `<p>${esc(risk.analysis)}</p>`}
 
-                ${parsed['safer rewrite suggestion'] ? `
+                ${rewrite ? `
                 <div class="rewrite-box">
                     <div class="rewrite-header">
                         <h4>Safer Rewrite</h4>
-                        <button class="copy-btn" data-copy="${parsed['safer rewrite suggestion']}">
-                            Copy
-                        </button>
+                        <button type="button" class="copy-btn" data-copy="${esc(rewrite)}">Copy</button>
                     </div>
-                    <p class="rewrite-text">${parsed['safer rewrite suggestion']}</p>
+                    <p class="rewrite-text">${esc(rewrite)}</p>
                 </div>
                 ` : ''}
 
-                <div class="validation-box ${isConfidenceWarning ? 'warning-bg' : 'success-bg'}" style="margin-top: 1rem; padding: 0.5rem; border-radius: 4px; font-size: 0.9rem;">
-                    <strong>Confidence:</strong> ${confidence}
+                <div class="validation-box ${isConfidenceWarning ? 'warning-bg' : 'success-bg'}">
+                    <strong>Confidence:</strong> ${esc(confidence)}
                 </div>
             </div>
         `;
 
         analysisContent.appendChild(card);
     });
-    
-    // Add Disclaimer
+
     const disclaimer = document.createElement('div');
     disclaimer.className = 'disclaimer-note';
-    disclaimer.style = 'grid-column: 1 / -1; text-align: center; margin-top: 2rem; color: #888; font-size: 0.8rem;';
-    disclaimer.innerText = "This tool is educational only — not legal advice.";
+    disclaimer.textContent = 'This tool is educational only — not legal advice.';
     analysisContent.appendChild(disclaimer);
 }
 
-// Clipboard Copy Logic
+// ---------- Clipboard ----------
 document.addEventListener('click', async (e) => {
     if (!e.target.classList.contains('copy-btn')) return;
-
     const text = e.target.dataset.copy;
     if (!text) return;
 
@@ -216,199 +238,149 @@ document.addEventListener('click', async (e) => {
         await navigator.clipboard.writeText(text);
         const original = e.target.textContent;
         e.target.textContent = 'Copied!';
-        setTimeout(() => {
-            e.target.textContent = original;
-        }, 1500);
+        setTimeout(() => { e.target.textContent = original; }, 1500);
     } catch (err) {
         console.error('Copy failed', err);
+        showError('Could not copy to clipboard.');
     }
 });
 
+// ---------- Auth & history modal ----------
+const loginBtn = $('loginBtn');
+const historyBtn = $('historyBtn');
+const historyModal = $('historyModal');
+const closeHistoryModal = $('closeHistoryModal');
+let lastFocused = null;
 
-// Firebase Integration
-const loginBtn = document.getElementById('loginBtn');
-const historyBtn = document.getElementById('historyBtn');
-const historyModal = document.getElementById('historyModal');
-const closeHistoryModal = document.getElementById('closeHistoryModal');
+loginBtn?.addEventListener('click', async () => { await signInWithGoogle(); });
 
-// Login button handler
-if (loginBtn) {
-    loginBtn.style.display = 'block'; // Ensure visible initially
-    loginBtn.addEventListener('click', async () => {
-        await signInWithGoogle();
-    });
+function openHistory() {
+    lastFocused = document.activeElement;
+    historyModal.classList.remove('hidden');
+    closeHistoryModal.focus();
 }
 
-// Gemini Test button handler
-
-
-// History button handler
-// History button handler
-if (historyBtn) {
-    historyBtn.addEventListener('click', async () => {
-        if (!currentUser) {
-            alert('Please sign in to view history');
-            return;
-        }
-        
-        historyModal.classList.remove('hidden');
-        await loadHistory();
-    });
+function closeHistory() {
+    historyModal.classList.add('hidden');
+    lastFocused?.focus?.();
 }
 
-// Close modal
-if (closeHistoryModal) {
-    closeHistoryModal.addEventListener('click', () => {
-        historyModal.classList.add('hidden');
-    });
-}
-
-// Close modal on outside click
-historyModal?.addEventListener('click', (e) => {
-    if (e.target === historyModal) {
-        historyModal.classList.add('hidden');
+historyBtn?.addEventListener('click', async () => {
+    if (!currentUser) {
+        showToast('Please sign in to view history.');
+        return;
     }
+    openHistory();
+    await loadHistory();
 });
 
-// Save report after analysis
-// Save report after analysis
+closeHistoryModal?.addEventListener('click', closeHistory);
+historyModal?.addEventListener('click', (e) => { if (e.target === historyModal) closeHistory(); });
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !historyModal.classList.contains('hidden')) closeHistory();
+});
+
+// ---------- Save / load reports ----------
 async function saveCurrentReport(analysis, inputText, inputType, fileName) {
     if (!currentUser) {
-        alert('ℹ️ Tip: Sign in with Google to save your analysis history!');
-        console.log('Skipping save: Not signed in');
+        if (!signInTipShown) {
+            signInTipShown = true;
+            showToast('Tip: sign in with Google to save your analysis history.');
+        }
         return;
     }
-    
+
     if (!isFirebaseConfigured) {
         console.error('Skipping save: Firebase not configured');
-        alert('⚠️ Error: Firebase is not configured correctly. Data cannot be saved.');
+        showError('Firebase is not configured correctly. Data cannot be saved.');
         return;
     }
-    
+
     const reportData = {
-        inputText: inputText.substring(0, 500), // Limit text size
+        inputText: inputText.substring(0, 500), // limit stored text size
         inputType,
         fileName: fileName || null,
         analysis,
         timestamp: new Date().toISOString()
     };
-    
+
     try {
-        // Use client-side save which handles Firestore SDK
         const saved = await saveReport(reportData);
-        if (saved) {
-            console.log('Report saved successfully');
-            // Show simple toast or log
-            const btn = document.getElementById('historyBtn');
-            const originalText = btn.textContent;
-            btn.textContent = '✅ Saved';
-            setTimeout(() => btn.textContent = originalText, 2000);
-        }
+        if (saved) showToast('✅ Saved to your history', 'success');
     } catch (error) {
         console.error('Failed to save report:', error);
+        showError('Could not save this report.');
     }
 }
 
-// Load and display history
 async function loadHistory() {
-    const historyList = document.getElementById('historyList');
+    const historyList = $('historyList');
     historyList.innerHTML = '<p class="loading">Loading history...</p>';
-    
+
     const reports = await fetchHistory();
-    
-    if (reports.length === 0) {
+
+    if (!reports || reports.length === 0) {
         historyList.innerHTML = '<p class="empty">No analysis history yet. Start by analyzing a document!</p>';
         return;
     }
-    
+
     historyList.innerHTML = '';
-    reports.forEach(report => {
+    reports.forEach((report) => {
         const card = document.createElement('div');
         card.className = 'history-card';
-        
+
         const date = report.timestamp?.toDate ? report.timestamp.toDate() : new Date(report.timestamp);
-        const dateStr = date.toLocaleDateString('en-IN', { 
-            year: 'numeric', 
-            month: 'short', 
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
+        const dateStr = date.toLocaleDateString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
         });
-        
+
         const riskCount = report.analysis?.length || 0;
         const preview = report.inputText?.substring(0, 100) || 'No preview available';
-        
+
         card.innerHTML = `
             <div class="history-header">
-                <span class="history-date">${dateStr}</span>
+                <span class="history-date">${esc(dateStr)}</span>
                 <span class="history-type">${report.inputType === 'upload' ? '📄 Upload' : '📝 Paste'}</span>
             </div>
-            <p class="history-preview">${preview}...</p>
+            <p class="history-preview">${esc(preview)}...</p>
             <div class="history-footer">
                 <span class="history-risks">${riskCount} risk(s) detected</span>
-                <button class="btn-view-report" data-report-id="${report.id}">View Report</button>
+                <button type="button" class="btn-view-report" data-report-id="${esc(report.id)}">View Report</button>
             </div>
         `;
-        
         historyList.appendChild(card);
-    });
-    
-    // Add click handlers to view buttons
-    document.querySelectorAll('.btn-view-report').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            const reportId = e.target.dataset.reportId;
-            await viewReport(reportId);
-        });
     });
 }
 
-// View a specific report
+// One delegated listener instead of re-binding after every render
+$('historyList').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.btn-view-report');
+    if (btn) await viewReport(btn.dataset.reportId);
+});
+
 async function viewReport(reportId) {
     const report = await getReport(reportId);
-    
     if (!report) {
-        alert('Report not found');
+        showError('Report not found.');
         return;
     }
-    
-    // Close history modal
-    historyModal.classList.add('hidden');
-    
-    // Display the report
+
+    closeHistory();
     resultsSection.classList.remove('hidden');
     analysisContainer.classList.remove('hidden');
     loader.classList.add('hidden');
-    
     renderResults(report.analysis);
-    
-    // Optionally populate input field
+    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
     if (report.inputType === 'paste' && report.inputText) {
         textInput.value = report.inputText;
-        // Switch to paste tab
-        tabs.forEach(t => t.classList.remove('active'));
-        tabContents.forEach(c => c.classList.remove('active'));
-        document.querySelector('[data-tab="paste"]').classList.add('active');
-        document.getElementById('tab-paste').classList.add('active');
-        activeMode = 'paste';
+        setTab('paste');
     }
 }
 
-var mybutton = document.getElementById("scrollToTop")
-
-window.onscroll=function() {scrollFunction()}
-
-function scrollFunction(){
-    if(document.body.scrollTop>20||document.documentElement.scrollTop>20){mybutton.style.display="block"}
-    else{mybutton.style.display="none"}
-}
-
-mybutton.onclick=function(){
-    scrollToTop();
-}
-
-function scrollToTop(){
-    window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-    })
-}
+// ---------- Scroll to top ----------
+const topBtn = $('scrollToTop');
+window.addEventListener('scroll', () => {
+    topBtn.classList.toggle('visible', window.scrollY > 300);
+}, { passive: true });
+topBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
