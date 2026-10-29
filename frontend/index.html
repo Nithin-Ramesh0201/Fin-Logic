@@ -4,86 +4,96 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fin-Logic | AI Financial Protection</title>
-    <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/png" href="/favicon.png">
+    <meta name="description" content="AI-powered detection of hidden fees, auto-renewals and predatory clauses in financial documents. Educational tool - not financial or legal advice.">
+    <meta name="theme-color" content="#09090b">
+    <meta property="og:title" content="Fin-Logic | AI Financial Protection">
+    <meta property="og:description" content="Expose the fine print: spot hidden fees, auto-renewals and predatory clauses.">
+    <meta property="og:type" content="website">
 
-    
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Firebase SDKs (deferred so they run in order, before the app scripts below) -->
+    <script defer src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script defer src="firebase-client.js"></script>
+    <script defer src="script.js"></script>
 </head>
 <body>
-    <div class="background-wrapper">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div class="background-wrapper" aria-hidden="true">
         <div class="blob blob-1"></div>
         <div class="blob blob-2"></div>
         <div class="blob blob-3"></div>
     </div>
 
-    <nav class="navbar">
+    <nav class="navbar" aria-label="Main">
         <div class="logo">
-            <span class="shield">🛡️</span> Fin-Logic
+            <span class="shield" aria-hidden="true">🛡️</span> Fin-Logic
         </div>
         <div class="nav-links">
-
-            <button class="btn-history" id="historyBtn">History</button>
-            <button class="btn-login" id="loginBtn">Sign in with Google</button>
-            <div class="user-profile" style="display: none;">U</div>
+            <button type="button" class="btn-history" id="historyBtn">History</button>
+            <button type="button" class="btn-login" id="loginBtn">Sign in with Google</button>
+            <button type="button" class="user-profile" style="display: none;" aria-label="Account - click to sign out">U</button>
         </div>
     </nav>
 
-    <main class="container">
+    <main class="container" id="main">
         <header class="page-header">
             <h1>Expose the Fine Print</h1>
             <p>AI-powered detection for hidden fees, auto-renewals, and predatory financial clauses. Results are estimates - always verify with professionals.</p>
         </header>
 
-        <section class="input-panel">
-            <div class="tabs">
-                <button class="tab-btn active" data-tab="upload">Upload Document</button>
-                <button class="tab-btn" data-tab="paste">Paste Text</button>
+        <section class="input-panel" aria-label="Document input">
+            <div class="tabs" role="tablist" aria-label="Input method">
+                <button type="button" class="tab-btn active" id="tabbtn-upload" data-tab="upload"
+                        role="tab" aria-selected="true" aria-controls="tab-upload">Upload Document</button>
+                <button type="button" class="tab-btn" id="tabbtn-paste" data-tab="paste"
+                        role="tab" aria-selected="false" aria-controls="tab-paste" tabindex="-1">Paste Text</button>
             </div>
 
-            <div class="tab-content active" id="tab-upload">
-                <div class="dropzone" id="dropzone">
-                    <div class="icon">📂</div>
-                    <p>Drag & drop PDF or Image</p>
-                    <span style="font-size: 0.9rem; color: var(--primary);">or click to browse</span>
+            <div class="tab-content active" id="tab-upload" role="tabpanel" aria-labelledby="tabbtn-upload">
+                <div class="dropzone" id="dropzone" role="button" tabindex="0"
+                     aria-label="Upload a PDF or image. Press Enter to browse files, or drag and drop.">
+                    <div class="icon" aria-hidden="true">📂</div>
+                    <p>Drag &amp; drop PDF or Image</p>
+                    <span class="hint">or click to browse</span>
                     <input type="file" id="fileInput" accept="image/*,application/pdf" hidden>
-                    <div id="file-info" class="file-info hidden" style="margin-top: 1rem; color: white;"></div>
+                    <div id="file-info" class="file-info hidden" aria-live="polite"></div>
                 </div>
             </div>
 
-            <div class="tab-content" id="tab-paste">
-                <textarea id="textInput" placeholder="Paste your contract clause, email, or terms here..."></textarea>
+            <div class="tab-content" id="tab-paste" role="tabpanel" aria-labelledby="tabbtn-paste">
+                <textarea id="textInput" aria-label="Contract text to analyze"
+                          placeholder="Paste your contract clause, email, or terms here..."></textarea>
             </div>
 
-            <button id="analyzeBtn" class="btn-analyze">Analyze Risk Level</button>
+            <button type="button" id="analyzeBtn" class="btn-analyze">Analyze Risk Level</button>
         </section>
 
-        <section id="results" class="results-section hidden">
-            
-            <div id="loader" class="loader hidden">
-                <div class="spinner"></div>
+        <section id="results" class="results-section hidden" aria-live="polite">
+            <div id="loader" class="loader hidden" role="status">
+                <div class="spinner" aria-hidden="true"></div>
                 <p>Running Neural Analysis...</p>
             </div>
 
             <div id="analysis-container" class="hidden">
-                 <!-- Summary Stats could go here -->
-                <div class="results-grid" id="analysis-content">
-                    <!-- Cards injected here -->
-                </div>
+                <div class="results-grid" id="analysis-content"></div>
             </div>
         </section>
     </main>
 
     <!-- History Modal -->
-    <div id="historyModal" class="modal hidden">
+    <div id="historyModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Your Analysis History</h2>
-                <button class="modal-close" id="closeHistoryModal">&times;</button>
+                <h2 id="historyTitle">Your Analysis History</h2>
+                <button type="button" class="modal-close" id="closeHistoryModal" aria-label="Close history">&times;</button>
             </div>
             <div class="modal-body" id="historyList">
                 <p class="loading">Loading history...</p>
@@ -93,18 +103,19 @@
 
     <footer class="disclaimer-footer">
         <div class="disclaimer-content">
-            <p class="disclaimer-icon">⚠️</p>
+            <p class="disclaimer-icon" aria-hidden="true">⚠️</p>
             <p class="disclaimer-text">
                 <strong>Educational Tool Only</strong><br>
-                This tool is for informational and educational purposes only. It does not provide legal, financial, or professional advice. 
-                Results are AI-generated estimates and may not be 100% accurate. Always verify important financial decisions with your bank, 
+                This tool is for informational and educational purposes only. It does not provide legal, financial, or professional advice.
+                Results are AI-generated estimates and may not be 100% accurate. Always verify important financial decisions with your bank,
                 legal advisor, or certified financial professional before taking action.
             </p>
         </div>
     </footer>
-    
-    <button id="scrollToTop" title="Go to top">↑ Top</button>
-    <script src="firebase-client.js"></script>
-    <script src="script.js"></script>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <button type="button" id="scrollToTop" aria-label="Scroll to top">↑ Top</button>
+
+    <noscript><p style="text-align:center;padding:2rem;color:#fff">Fin-Logic needs JavaScript to analyze documents.</p></noscript>
 </body>
 </html>
